@@ -3,17 +3,20 @@
 # Author: Pete Yan <pete.yan@aliyun.com>
 # Date  : 2021/9/8
 #
-# 请修改PamConnector.verify_modify_pwd
-# 完成变更设备登录密码代码
+# 请修改PamConnector.discover_account
+# 完成发现账号的代码
+import base64
 import getopt
-import signal
+import hashlib
+import json
 import sys
 import time
 import traceback
 
-from secmind.rpa import webdriver, Options
+#import muggle_ocr
+import requests
+from secmind.rpa import webdriver, Options, By
 from secmind.rpa import DesiredCapabilities
-
 
 class PamConnector:
     def __init__(self, args):
@@ -22,54 +25,29 @@ class PamConnector:
         self.pwd = None
         self.type = None
         self.new_pwd = None
-        self.via_user = None
-        self.via_pwd = None
         self.location = None
         self.remote = None
         self.driver = None
 
-    def verify_modify_pwd(self):
+    def discover_account(self):
         """
-        修改设备登录密码
-        :rtype: 密码修改结果
+        账号发现
+        :return:
         """
         try:
-            print(self.via_pwd)
-            print(self.via_user)
-            print(self.pwd)
             self.driver.get(self.location)
-            self.driver.find_element_by_id("username").send_keys(self.user)
+            self.driver.find_element(By.NAME, "Name").send_keys(self.user)
             time.sleep(1)
-            self.driver.find_element_by_id("password").send_keys(self.pwd)
+            self.driver.find_element(By.ID, "Password").send_keys(self.pwd)
             time.sleep(1)
-            self.driver.find_element_by_id("loginbtn").click()
+            self.driver.find_element(By.ID, "login").click()
             time.sleep(3)
-            self.driver.switch_to.frame("topframe")
-            if self.driver.find_element_by_id("loginuser").is_enabled():
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('menu')
-                self.driver.find_element_by_xpath("//span[contains(.,'系统维护')]").click()
+            if self.driver.find_element(By.ID, "mapspf").is_enabled():
+                self.driver.find_element(By.LINK_TEXT, "用户管理").click()
                 time.sleep(2)
-                self.driver.find_element_by_xpath("//span[contains(.,'密码修改')]").click()
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('content')
-                time.sleep(1)
-                cur_pwd = self.driver.find_element_by_name('curpwd')
-                cur_pwd.clear()
-                cur_pwd.send_keys(self.pwd)
-                time.sleep(1)
-                new_pwd1 = self.driver.find_element_by_name('newpwd1')
-                new_pwd1.clear()
-                new_pwd1.send_keys(self.new_pwd)
-                time.sleep(1)
-                new_pwd2 = self.driver.find_element_by_name('newpwd2')
-                new_pwd2.clear()
-                new_pwd2.send_keys(self.new_pwd)
-                self.driver.find_element_by_xpath("//input[@value='提交修改']").click()
-                self.driver.switch_to.alert.accept()
-                print("result=" + "true")
-            else:
-                print("result=" + "false")
+                discover_username_elements = self.driver.find_elements(By.XPATH, "//table[@id='manager_info']/tbody/tr[1]/td[2]")
+                for i in range(0, len(discover_username_elements)):
+                    print("username=" + discover_username_elements[i].text)
         except Exception:
             print(traceback.print_exc())
             print("result=" + "false")
@@ -83,8 +61,8 @@ class PamConnector:
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--no-sandbox')
-            # self.driver = webdriver.Chrome('./chromedriver', options=options)
             self.driver = webdriver.Chrome('D:\Python\Python39\chromedriver', options=options)
+            self.driver.maximize_window()
         elif self.type == 'remote':
             options = Options()
             options.add_argument('--allow-running-insecure-content')
@@ -95,6 +73,30 @@ class PamConnector:
                                       desired_capabilities=DesiredCapabilities.CHROME, options=options)
             driver.maximize_window()
             self.driver = driver
+
+    def get_img_txt(self, base64img):
+        img_text = ''
+        status = requests.get(url='https://pam-openapi.secmind.cn/api/net/status')
+        if json.loads(status.text).get('success') is True:
+            sign_plain = "WwanDdou" + "" + base64img + "" + "vgdffs"
+            hl = hashlib.md5()
+            hl.update(sign_plain.encode(encoding='utf-8'))
+            sign_cipher = hl.hexdigest()
+            params = {
+                'sign': sign_cipher,
+                'typeId': '',
+                'image': base64img,
+                'assetType': ''
+            }
+            resp = requests.post(json=params, url='https://pam-openapi.secmind.cn/api/captcha/identity')
+            resp_data = json.loads(resp.text)
+            if resp_data.get('success') is True:
+                img_text = resp_data.get('code')
+        else:
+            #sdk = muggle_ocr.SDK(model_type=muggle_ocr.ModelType.Captcha)
+            #img_text = sdk.predict(image_bytes=base64.b64decode(base64img))
+            img_text = ''
+        return img_text
 
     def action(self):
         if len(self.args) > 0:
@@ -114,12 +116,8 @@ class PamConnector:
                         self.location = arg
                     elif opt in ['-s']:
                         self.remote = arg
-                    elif opt in ['-v']:
-                        self.via_user = arg
-                    elif opt in ['-i']:
-                        self.via_pwd = arg
                 self.get_driver()
-                self.verify_modify_pwd()
+                self.discover_account()
             except Exception as e:
                 print(traceback.print_exc())
 

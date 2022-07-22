@@ -5,15 +5,18 @@
 #
 # 请修改PamConnector.verify_modify_pwd
 # 完成变更设备登录密码代码
+import base64
 import getopt
-import signal
+import hashlib
+import json
 import sys
 import time
 import traceback
 
-from secmind.rpa import webdriver, Options
+#import muggle_ocr
+import requests
+from secmind.rpa import webdriver, Options, By
 from secmind.rpa import DesiredCapabilities
-
 
 class PamConnector:
     def __init__(self, args):
@@ -38,35 +41,36 @@ class PamConnector:
             print(self.via_user)
             print(self.pwd)
             self.driver.get(self.location)
-            self.driver.find_element_by_id("username").send_keys(self.user)
-            time.sleep(1)
-            self.driver.find_element_by_id("password").send_keys(self.pwd)
-            time.sleep(1)
-            self.driver.find_element_by_id("loginbtn").click()
+            if self.driver.find_element(By.ID, "login_captcha").is_displayed():
+                verificationCode = self.driver.find_element(By.ID, "img_captcha")
+                self.driver.find_element(By.ID, "login_username").send_keys(self.user)
+                time.sleep(1)
+                self.driver.find_element(By.ID, "login_passwd").send_keys(self.pwd)
+                time.sleep(1)
+                img_txt = self.get_img_txt(verificationCode.screenshot_as_base64)
+                # 填充验证码输入框
+                self.driver.find_element(By.ID, "login_captcha").send_keys(img_txt)
+                time.sleep(1)
+            else:
+                self.driver.find_element(By.ID, "login_username").send_keys(self.user)
+                time.sleep(1)
+                self.driver.find_element(By.ID, "login_passwd").send_keys(self.pwd)
+                time.sleep(1)
+            self.driver.find_element(By.ID, "login_button").click()
             time.sleep(3)
-            self.driver.switch_to.frame("topframe")
-            if self.driver.find_element_by_id("loginuser").is_enabled():
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('menu')
-                self.driver.find_element_by_xpath("//span[contains(.,'系统维护')]").click()
+            if self.driver.find_element(By.ID, "ext-gen1100").is_enabled():
+                self.driver.find_element(By.ID, "ext-gen1100").click()
                 time.sleep(2)
-                self.driver.find_element_by_xpath("//span[contains(.,'密码修改')]").click()
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('content')
+                self.driver.find_element(By.XPATH, "//span[text()='修改密码']").click()
+                time.sleep(3)
+                cur_pwd = self.driver.find_element(By.XPATH, "//input[@class='x-form-field x-form-required-field x-form-text']").send_keys(self.pwd)
                 time.sleep(1)
-                cur_pwd = self.driver.find_element_by_name('curpwd')
-                cur_pwd.clear()
-                cur_pwd.send_keys(self.pwd)
+                new_pwd1 = self.driver.find_element(By.XPATH, "//input[@name='password']").send_keys(self.new_pwd)
                 time.sleep(1)
-                new_pwd1 = self.driver.find_element_by_name('newpwd1')
-                new_pwd1.clear()
-                new_pwd1.send_keys(self.new_pwd)
-                time.sleep(1)
-                new_pwd2 = self.driver.find_element_by_name('newpwd2')
-                new_pwd2.clear()
-                new_pwd2.send_keys(self.new_pwd)
-                self.driver.find_element_by_xpath("//input[@value='提交修改']").click()
-                self.driver.switch_to.alert.accept()
+                new_pwd2 = self.driver.find_element(By.XPATH, "//input[@name='rePassword']").send_keys(self.new_pwd)
+                time.sleep(1) #autocomplete="new-password"  aria-invalid="false"
+                self.driver.find_element(By.XPATH, "//a[@class='x-btn x-unselectable x-box-item x-toolbar-item x-btn-default-small x-noicon x-btn-noicon x-btn-default-small-noicon x-panel-button-highlight']").click()
+                time.sleep(1)#class="x-btn x-unselectable x-box-item x-toolbar-item x-btn-default-small x-noicon x-btn-noicon x-btn-default-small-noicon x-panel-button-highlight"
                 print("result=" + "true")
             else:
                 print("result=" + "false")
@@ -83,7 +87,6 @@ class PamConnector:
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--no-sandbox')
-            # self.driver = webdriver.Chrome('./chromedriver', options=options)
             self.driver = webdriver.Chrome('D:\Python\Python39\chromedriver', options=options)
         elif self.type == 'remote':
             options = Options()
@@ -96,11 +99,36 @@ class PamConnector:
             driver.maximize_window()
             self.driver = driver
 
+    def get_img_txt(self, base64img):
+        img_text = ''
+        status = requests.get(url='https://pam-openapi.secmind.cn/api/net/status')
+        if json.loads(status.text).get('success') is True:
+            sign_plain = "WwanDdou" + "" + base64img + "" + "vgdffs"
+            hl = hashlib.md5()
+            hl.update(sign_plain.encode(encoding='utf-8'))
+            sign_cipher = hl.hexdigest()
+            params = {
+                'sign': sign_cipher,
+                'typeId': '',
+                'image': base64img,
+                'assetType': ''
+            }
+            resp = requests.post(json=params, url='https://pam-openapi.secmind.cn/api/captcha/identity')
+            resp_data = json.loads(resp.text)
+            if resp_data.get('success') is True:
+                img_text = resp_data.get('code')
+        else:
+            #sdk = muggle_ocr.SDK(model_type=muggle_ocr.ModelType.Captcha)
+            #img_text = sdk.predict(image_bytes=base64.b64decode(base64img))
+            img_text = ''
+        return img_text
+
     def action(self):
         if len(self.args) > 0:
             try:
                 argv = self.args[1:]
                 opts, args = getopt.getopt(argv, "u:p:t:n:l:s:v:i:")
+
                 for opt, arg in opts:
                     if opt in ['-u']:
                         self.user = arg

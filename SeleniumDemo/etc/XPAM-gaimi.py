@@ -5,14 +5,20 @@
 #
 # 请修改PamConnector.verify_modify_pwd
 # 完成变更设备登录密码代码
+import base64
 import getopt
-import signal
+import hashlib
+import json
 import sys
 import time
 import traceback
 
-from secmind.rpa import webdriver, Options
-from secmind.rpa import DesiredCapabilities
+#import muggle_ocr
+import requests
+from selenium import webdriver
+from selenium.webdriver import DesiredCapabilities
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 
 
 class PamConnector:
@@ -38,35 +44,45 @@ class PamConnector:
             print(self.via_user)
             print(self.pwd)
             self.driver.get(self.location)
-            self.driver.find_element_by_id("username").send_keys(self.user)
+            VerificationCode=self.driver.find_element(By.XPATH,"//*[@id='validImg']")
+            if  VerificationCode:
+                self.driver.get(self.location)
+                self.driver.find_element(By.ID, "username").send_keys(self.user)
+                time.sleep(1)
+                self.driver.find_element(By.ID, "password").send_keys(self.pwd)
+                time.sleep(1)
+            else:
+                self.driver.find_element(By.ID, "username").send_keys(self.user)
+                time.sleep(1)
+                self.driver.find_element(By.ID, "password").send_keys(self.pwd)
+                time.sleep(1)
+                img_element = self.driver.find_element(By.ID, "validImg")
+                if img_element is not None:
+                    img_txt = self.get_img_txt(img_element.screenshot_as_base64)
+                    # 填充验证码输入框
+                    self.driver.find_element(By.ID, "validate").send_keys(img_txt)
+                    time.sleep(1)
+
+            self.driver.find_element(By.ID, "submit").click()
             time.sleep(1)
-            self.driver.find_element_by_id("password").send_keys(self.pwd)
-            time.sleep(1)
-            self.driver.find_element_by_id("loginbtn").click()
+            result = self.driver.find_element(By.XPATH,"//div[@class='agent-info pointer']").is_enabled()
             time.sleep(3)
-            self.driver.switch_to.frame("topframe")
-            if self.driver.find_element_by_id("loginuser").is_enabled():
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('menu')
-                self.driver.find_element_by_xpath("//span[contains(.,'系统维护')]").click()
-                time.sleep(2)
-                self.driver.find_element_by_xpath("//span[contains(.,'密码修改')]").click()
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('content')
+            if result:
                 time.sleep(1)
-                cur_pwd = self.driver.find_element_by_name('curpwd')
-                cur_pwd.clear()
-                cur_pwd.send_keys(self.pwd)
+                self.driver.find_element(By.XPATH,"//div[@class='agent-info pointer']").click()
                 time.sleep(1)
-                new_pwd1 = self.driver.find_element_by_name('newpwd1')
-                new_pwd1.clear()
-                new_pwd1.send_keys(self.new_pwd)
+                self.driver.find_element(By.ID,"btnChangePwd").click()
                 time.sleep(1)
-                new_pwd2 = self.driver.find_element_by_name('newpwd2')
-                new_pwd2.clear()
-                new_pwd2.send_keys(self.new_pwd)
-                self.driver.find_element_by_xpath("//input[@value='提交修改']").click()
-                self.driver.switch_to.alert.accept()
+                self.driver.switch_to.frame(36)
+                time.sleep(1)
+                cur_pwd = self.driver.find_element(By.NAME, "password").send_keys(self.pwd)
+                time.sleep(1)
+                new_pwd1 = self.driver.find_element(By.NAME, "newPassword").send_keys(self.new_pwd)
+                time.sleep(1)
+                new_pwd2 = self.driver.find_element(By.NAME, "reNewPassword").send_keys(self.new_pwd)
+                time.sleep(1)
+                self.driver.find_element(By.CSS_SELECTOR, ".btn-primary").click()
+                time.sleep(1)
                 print("result=" + "true")
             else:
                 print("result=" + "false")
@@ -83,24 +99,46 @@ class PamConnector:
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--no-sandbox')
-            # self.driver = webdriver.Chrome('./chromedriver', options=options)
-            self.driver = webdriver.Chrome('D:\Python\Python39\chromedriver', options=options)
+            self.driver = webdriver.Chrome('C:\Program Files\Google\Chrome\Application\96.0.4664.45\chromedriver.exe',
+                                           options=options)
         elif self.type == 'remote':
             options = Options()
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--no-sandbox')
-            # driver = webdriver.Chrome(options=options)
             driver = webdriver.Remote(command_executor=self.remote,
                                       desired_capabilities=DesiredCapabilities.CHROME, options=options)
             driver.maximize_window()
             self.driver = driver
+
+    def get_img_txt(self, base64img):
+        img_text = ''
+        status = requests.get(url='https://pam-openapi.secmind.cn/api/net/status')
+        if json.loads(status.text).get('success') is True:
+            sign_plain = "WwanDdou" + "" + base64img + "" + "vgdffs"
+            hl = hashlib.md5()
+            hl.update(sign_plain.encode(encoding='utf-8'))
+            sign_cipher = hl.hexdigest()
+            params = {
+                'sign': sign_cipher,
+                'typeId': '',
+                'image': base64img,
+                'assetType': ''
+            }
+            resp = requests.post(json=params, url='https://pam-openapi.secmind.cn/api/captcha/identity')
+            resp_data = json.loads(resp.text)
+            if resp_data.get('success') is True:
+                img_text = resp_data.get('code')
+        else:
+            img_text = ''
+        return img_text
 
     def action(self):
         if len(self.args) > 0:
             try:
                 argv = self.args[1:]
                 opts, args = getopt.getopt(argv, "u:p:t:n:l:s:v:i:")
+
                 for opt, arg in opts:
                     if opt in ['-u']:
                         self.user = arg

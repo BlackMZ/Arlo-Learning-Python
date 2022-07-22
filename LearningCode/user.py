@@ -13,3 +13,7 @@ class User:
 
     def get_user_info(self):
         print(f"User {self.name} job title is {self.job_title}")
+
+if __name__ == '__main__':
+    total_page = int((28 / 30)) + 1
+    print(total_page)

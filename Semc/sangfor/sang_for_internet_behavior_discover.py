@@ -3,8 +3,8 @@
 # Author: Pete Yan <pete.yan@aliyun.com>
 # Date  : 2021/9/8
 #
-# 请修改PamConnector.verify_login
-# 完成设备校验代码
+# 请修改PamConnector.discover_account
+# 完成发现账号的代码
 import base64
 import getopt
 import hashlib
@@ -18,6 +18,7 @@ import requests
 from selenium import webdriver
 from selenium.webdriver import DesiredCapabilities
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.select import Select
 
 
 class PamConnector:
@@ -26,38 +27,53 @@ class PamConnector:
         self.user = None
         self.pwd = None
         self.type = None
+        self.new_pwd = None
         self.location = None
         self.remote = None
         self.driver = None
 
-    def verify_login(self):
+    def discover_account(self):
         """
-        校验登录
-        :rtype: 登录结果字符串
+        账号发现
+        :return:
         """
         try:
             self.driver.get(self.location)
-            self.driver.find_element_by_name("username").send_keys(self.user)
-            time.sleep(1)
-            self.driver.find_element_by_name("password").send_keys(self.pwd)
-            time.sleep(1)
+            time.sleep(3)
+            self.driver.find_element_by_id("user").send_keys(self.user)
+            time.sleep(2)
+            self.driver.find_element_by_id("password").send_keys(self.pwd)
+            time.sleep(10)
+            check = self.driver.find_element_by_id("enablePrivacy").is_selected()
+            if check is False:
+                self.driver.find_element_by_id("enablePrivacy").click()
+            self.driver.find_element_by_id("button").click()
+            time.sleep(15)
+            if self.driver.find_element_by_id("gcs_user_area").is_enabled():
+                time.sleep(10)
+                flag = False
+                try:
+                    self.driver.find_element_by_xpath("//div/div/div/div/table/tbody/tr/td[3]/table/tbody/tr/td/table/tbody/tr/td/table/tbody/tr[2]/td[2]/em/button")
+                    flag = True
+                except:
+                    print("the sky is blue!")
 
-            ## 修改验证码xpath
-            #img_element = self.driver.find_element_by_class_name("getCaptcha")
-            #if img_element is not None:
-                #img_txt = self.get_img_txt(img_element.screenshot_as_base64)
-                ## 填充验证码输入框
-                #self.driver.find_element_by_xpath("//input[@placeholder='请输入验证码']").send_keys(img_txt)
-                #time.sleep(1)
+                if flag:
+                    self.driver.find_element_by_xpath(
+                        "//div/div/div/div/table/tbody/tr/td[3]/table/tbody/tr/td/table/tbody/tr/td/table/tbody/tr[2]/td[2]/em/button").click()
 
-            self.driver.find_element_by_id("loginbtn").click()
-            time.sleep(1)
-            self.driver.switch_to.frame("topframe")
-            result = self.driver.find_element_by_id("loginuser").is_enabled()
-            if result:
-                print("result=" + "true")
-            else:
-                print("result=" + "false")
+                time.sleep(2)
+                self.driver.find_element_by_xpath("//span[contains(.,'系统管理')]").click()
+                time.sleep(3)
+                self.driver.find_element_by_xpath("//a[contains(.,'系统配置')]").click()
+                time.sleep(2)
+                self.driver.find_element_by_xpath("//a[contains(.,'管理员账号')]").click()
+                time.sleep(30)
+                # //*[@id="ext-gen1329"]/div[1]//table/tbody/tr/td[3]/div/div/a
+                discover_username_elements = self.driver.find_elements_by_xpath(
+                    "//table/tbody/tr/td[3]/div/div/a")
+                for i in range(0, len(discover_username_elements)):
+                    print("username=" + discover_username_elements[i].text.split(" ")[0])
         except Exception:
             print(traceback.print_exc())
             print("result=" + "false")
@@ -71,13 +87,13 @@ class PamConnector:
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--no-sandbox')
-            self.driver = webdriver.Chrome('/Users/daniel/Downloads/chromedriver', options=options)
+            self.driver = webdriver.Chrome('D:\Python\Python39\chromedriver', options=options)
             self.driver.maximize_window()
         elif self.type == 'remote':
             options = Options()
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
-            options.add_argument('--no-sandbox')
+            # driver = webdriver.Chrome(options=options)
             driver = webdriver.Remote(command_executor=self.remote,
                                       desired_capabilities=DesiredCapabilities.CHROME, options=options)
             driver.maximize_window()
@@ -110,7 +126,7 @@ class PamConnector:
         if len(self.args) > 0:
             try:
                 argv = self.args[1:]
-                opts, args = getopt.getopt(argv, "u:p:t:l:s:")
+                opts, args = getopt.getopt(argv, "u:p:t:n:l:s:v:i:")
                 for opt, arg in opts:
                     if opt in ['-u']:
                         self.user = arg
@@ -118,13 +134,14 @@ class PamConnector:
                         self.pwd = arg
                     elif opt in ['-t']:
                         self.type = arg
+                    elif opt in ['-n']:
+                        self.new_pwd = arg
                     elif opt in ['-l']:
                         self.location = arg
                     elif opt in ['-s']:
                         self.remote = arg
-
                 self.get_driver()
-                self.verify_login()
+                self.discover_account()
             except Exception as e:
                 print(traceback.print_exc())
 

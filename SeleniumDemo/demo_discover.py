@@ -25,29 +25,33 @@ class PamConnector:
         :return:
         """
         try:
+
             self.driver.get(self.location)
-            self.driver.find_element_by_id("username").send_keys(self.user)
-            time.sleep(1)
-            self.driver.find_element_by_id("password").send_keys(self.pwd)
-            time.sleep(1)
-            self.driver.find_element_by_id("loginbtn").click()
-            time.sleep(2)
-            self.driver.switch_to.frame("topframe")
-            if self.driver.find_element_by_id("loginuser").is_enabled():
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('menu')
-                self.driver.find_element_by_xpath("//span[contains(.,'用户认证')]").click()
-                time.sleep(2)
-                self.driver.find_element_by_xpath("//span[contains(.,'账号管理')]").click()
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('content')
-                time.sleep(1)
-                discover_username_elements = self.driver.find_elements_by_xpath(
-                    "//*[@class= 'table-striped']/tbody/tr/td[3]")
-                # discover_username = []
-                for i in range(1, len(discover_username_elements)):
-                    print("username=" + discover_username_elements[i].text)
-                    # discover_username.append(discover_username_elements[i].text)
+            print("username=" + "系统设置")
+            print("username=" + "系统设置")
+            print("username=" + "系统设置")
+            # self.driver.find_element_by_id("username").send_keys(self.user)
+            # time.sleep(1)
+            # self.driver.find_element_by_id("password").send_keys(self.pwd)
+            # time.sleep(1)
+            # self.driver.find_element_by_id("loginbtn").click()
+            # time.sleep(2)
+            # self.driver.switch_to.frame("topframe")
+            # if self.driver.find_element_by_id("loginuser").is_enabled():
+            #     self.driver.switch_to.parent_frame()
+            #     self.driver.switch_to.frame('menu')
+            #     self.driver.find_element_by_xpath("//span[contains(.,'用户认证')]").click()
+            #     time.sleep(2)
+            #     self.driver.find_element_by_xpath("//span[contains(.,'账号管理')]").click()
+            #     self.driver.switch_to.parent_frame()
+            #     self.driver.switch_to.frame('content')
+            #     time.sleep(1)
+            #     discover_username_elements = self.driver.find_elements_by_xpath(
+            #         "//*[@class= 'table-striped']/tbody/tr/td[3]")
+            #     # discover_username = []
+            #     for i in range(1, len(discover_username_elements)):
+            #         print("username=" + discover_username_elements[i].text)
+            #         # discover_username.append(discover_username_elements[i].text)
         except Exception:
             print(traceback.print_exc())
             print("result=" + "false")

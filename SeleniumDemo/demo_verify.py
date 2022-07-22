@@ -5,15 +5,21 @@
 #
 # 请修改PamConnector.verify_login
 # 完成设备校验代码
+
 import getopt
 import signal
+import base64
+import getopt
+import hashlib
+import json
 import sys
 import time
 import traceback
+import muggle_ocr
+import requests
 
-from selenium import webdriver
-from selenium.webdriver import DesiredCapabilities
-from selenium.webdriver.chrome.options import Options
+from secmind.rpa import webdriver, Options
+from secmind.rpa import DesiredCapabilities
 
 
 class PamConnector:
@@ -69,6 +75,29 @@ class PamConnector:
                                       desired_capabilities=DesiredCapabilities.CHROME, options=options)
             driver.maximize_window()
             self.driver = driver
+
+    def get_img_txt(self, base64img):
+        img_text = ''
+        status = requests.get(url='https://pam-openapi.secmind.cn/api/net/status')
+        if json.loads(status.text).get('success') is True:
+            sign_plain = "WwanDdou" + "" + base64img + "" + "vgdffs"
+            hl = hashlib.md5()
+            hl.update(sign_plain.encode(encoding='utf-8'))
+            sign_cipher = hl.hexdigest()
+            params = {
+                'sign': sign_cipher,
+                'typeId': '',
+                'image': base64img,
+                'assetType': ''
+            }
+            resp = requests.post(json=params, url='https://pam-openapi.secmind.cn/api/captcha/identity')
+            resp_data = json.loads(resp.text)
+            if resp_data.get('success') is True:
+                img_text = resp_data.get('code')
+        else:
+            sdk = muggle_ocr.SDK(model_type=muggle_ocr.ModelType.Captcha)
+            img_text = sdk.predict(image_bytes=base64.b64decode(base64img))
+        return img_text
 
     def action(self):
         if len(self.args) > 0:

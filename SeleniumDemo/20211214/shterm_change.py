@@ -7,9 +7,12 @@
 # 完成变更设备登录密码代码
 import getopt
 import signal
+import hashlib
 import sys
+import json
 import time
 import traceback
+import requests
 
 from secmind.rpa import webdriver, Options
 from secmind.rpa import DesiredCapabilities
@@ -34,39 +37,32 @@ class PamConnector:
         :rtype: 密码修改结果
         """
         try:
-            print(self.via_pwd)
-            print(self.via_user)
-            print(self.pwd)
             self.driver.get(self.location)
-            self.driver.find_element_by_id("username").send_keys(self.user)
+            self.driver.find_element_by_id("inputUserName").send_keys(self.user)
             time.sleep(1)
-            self.driver.find_element_by_id("password").send_keys(self.pwd)
+            self.driver.find_element_by_id("inputPassword").send_keys(self.pwd)
             time.sleep(1)
-            self.driver.find_element_by_id("loginbtn").click()
-            time.sleep(3)
-            self.driver.switch_to.frame("topframe")
-            if self.driver.find_element_by_id("loginuser").is_enabled():
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('menu')
-                self.driver.find_element_by_xpath("//span[contains(.,'系统维护')]").click()
+            self.driver.find_element_by_id("loginBtn").click()
+            time.sleep(8)
+            if self.driver.find_element_by_class_name("userinfo").is_enabled():
+                self.driver.find_element_by_class_name("userinfo").click()
+                self.driver.find_element_by_link_text("帐号设置").click()
                 time.sleep(2)
-                self.driver.find_element_by_xpath("//span[contains(.,'密码修改')]").click()
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('content')
+                self.driver.find_element_by_link_text("个人设置").click()
+                self.driver.find_element_by_xpath("//span[contains(.,'修改密码')]").click()
                 time.sleep(1)
-                cur_pwd = self.driver.find_element_by_name('curpwd')
+                cur_pwd = self.driver.find_element_by_name('oriPwd')
                 cur_pwd.clear()
                 cur_pwd.send_keys(self.pwd)
                 time.sleep(1)
-                new_pwd1 = self.driver.find_element_by_name('newpwd1')
+                new_pwd1 = self.driver.find_element_by_name('newPwd')
                 new_pwd1.clear()
                 new_pwd1.send_keys(self.new_pwd)
                 time.sleep(1)
-                new_pwd2 = self.driver.find_element_by_name('newpwd2')
+                new_pwd2 = self.driver.find_element_by_name('confirmPwd')
                 new_pwd2.clear()
                 new_pwd2.send_keys(self.new_pwd)
-                self.driver.find_element_by_xpath("//input[@value='提交修改']").click()
-                self.driver.switch_to.alert.accept()
+                self.driver.find_element_by_xpath("//button[contains(.,'确定')]").click()
                 print("result=" + "true")
             else:
                 print("result=" + "false")
@@ -85,6 +81,7 @@ class PamConnector:
             options.add_argument('--no-sandbox')
             # self.driver = webdriver.Chrome('./chromedriver', options=options)
             self.driver = webdriver.Chrome('D:\Python\Python39\chromedriver', options=options)
+            self.driver.maximize_window()
         elif self.type == 'remote':
             options = Options()
             options.add_argument('--allow-running-insecure-content')
@@ -95,6 +92,30 @@ class PamConnector:
                                       desired_capabilities=DesiredCapabilities.CHROME, options=options)
             driver.maximize_window()
             self.driver = driver
+
+    def get_img_txt(self, base64img):
+        img_text = ''
+        status = requests.get(url='https://pam-openapi.secmind.cn/api/net/status')
+        if json.loads(status.text).get('success') is True:
+            sign_plain = "WwanDdou" + "" + base64img + "" + "vgdffs"
+            hl = hashlib.md5()
+            hl.update(sign_plain.encode(encoding='utf-8'))
+            sign_cipher = hl.hexdigest()
+            params = {
+                'sign': sign_cipher,
+                'typeId': '',
+                'image': base64img,
+                'assetType': ''
+            }
+            resp = requests.post(json=params, url='https://pam-openapi.secmind.cn/api/captcha/identity')
+            resp_data = json.loads(resp.text)
+            if resp_data.get('success') is True:
+                img_text = resp_data.get('code')
+        else:
+            # sdk = muggle_ocr.SDK(model_type=muggle_ocr.ModelType.Captcha)
+            # img_text = sdk.predict(image_bytes=base64.b64decode(base64img))
+            img_text = ''
+        return img_text
 
     def action(self):
         if len(self.args) > 0:

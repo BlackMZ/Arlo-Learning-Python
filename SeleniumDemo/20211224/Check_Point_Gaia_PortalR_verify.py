@@ -13,11 +13,12 @@ import sys
 import time
 import traceback
 
-import muggle_ocr
+#import muggle_ocr
 import requests
 from selenium import webdriver
 from selenium.webdriver import DesiredCapabilities
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 
 
 class PamConnector:
@@ -37,23 +38,32 @@ class PamConnector:
         """
         try:
             self.driver.get(self.location)
-            self.driver.find_element_by_name("username").send_keys(self.user)
+            #根据元素id/name/css/xpath找到用户名输入框，并填充用户名
+            self.driver.find_element(By.ID, "txtUserName").send_keys(self.user)
+            #等待1秒
             time.sleep(1)
-            self.driver.find_element_by_name("password").send_keys(self.pwd)
+            #根据元素id/name/css/xpath找到密码输入框，并填充密码
+            self.driver.find_element(By.ID, "txtPwd").send_keys(self.pwd)
             time.sleep(1)
 
-            ## 修改验证码xpath
-            #img_element = self.driver.find_element_by_class_name("getCaptcha")
-            #if img_element is not None:
-                #img_txt = self.get_img_txt(img_element.screenshot_as_base64)
-                ## 填充验证码输入框
-                #self.driver.find_element_by_xpath("//input[@placeholder='请输入验证码']").send_keys(img_txt)
-                #time.sleep(1)
+            # # 涉及到登录界面有图片或数字验证码框的情况，打下以下代码块的注释
+            # #根据元素id/name/css/xpath找到验证码图片
+            # img_element = self.driver.find_element_by_class_name("getCaptcha")
+            # if img_element is not None:
+            #     #调用验证码识别函数
+            #     img_txt = self.get_img_txt(img_element.screenshot_as_base64)
+            #     #根据元素id/name/css/xpath找到验证码输入框，并填充验证码
+            #     self.driver.find_element_by_xpath("//input[@placeholder='请输入验证码']").send_keys(img_txt)
+            #     time.sleep(1)
 
-            self.driver.find_element_by_id("loginbtn").click()
+            #根据元素id/name/css/xpath找到登录按钮，并点击
+            self.driver.find_element(By.ID, "ext-gen27").click()
             time.sleep(1)
-            self.driver.switch_to.frame("topframe")
-            result = self.driver.find_element_by_id("loginuser").is_enabled()
+            #iframe的切换，只在有iframe框架结构的页面中需要使用
+            #self.driver.switch_to.frame("topframe")
+            #登录进入之后，根据元素id/name/css/xpath找一个可以证明真正登录成功的元素
+            result = self.driver.find_element(By.ID, "button-1022-btnInnerEl").is_enabled()
+            #如果真正登录成功，那么返回true，否则返回false
             if result:
                 print("result=" + "true")
             else:
@@ -71,8 +81,7 @@ class PamConnector:
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--no-sandbox')
-            self.driver = webdriver.Chrome('/Users/daniel/Downloads/chromedriver', options=options)
-            self.driver.maximize_window()
+            self.driver = webdriver.Chrome('D:\Python\Python39\chromedriver', options=options)
         elif self.type == 'remote':
             options = Options()
             options.add_argument('--allow-running-insecure-content')
@@ -102,8 +111,9 @@ class PamConnector:
             if resp_data.get('success') is True:
                 img_text = resp_data.get('code')
         else:
-            sdk = muggle_ocr.SDK(model_type=muggle_ocr.ModelType.Captcha)
-            img_text = sdk.predict(image_bytes=base64.b64decode(base64img))
+            #sdk = muggle_ocr.SDK(model_type=muggle_ocr.ModelType.Captcha)
+            #img_text = sdk.predict(image_bytes=base64.b64decode(base64img))
+            img_text = ''
         return img_text
 
     def action(self):

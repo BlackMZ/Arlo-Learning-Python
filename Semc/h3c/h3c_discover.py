@@ -3,8 +3,8 @@
 # Author: Pete Yan <pete.yan@aliyun.com>
 # Date  : 2021/9/8
 #
-# 请修改PamConnector.verify_login
-# 完成设备校验代码
+# 请修改PamConnector.discover_account
+# 完成发现账号的代码
 import base64
 import getopt
 import hashlib
@@ -18,6 +18,7 @@ import requests
 from selenium import webdriver
 from selenium.webdriver import DesiredCapabilities
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.select import Select
 
 
 class PamConnector:
@@ -26,38 +27,53 @@ class PamConnector:
         self.user = None
         self.pwd = None
         self.type = None
+        self.new_pwd = None
         self.location = None
         self.remote = None
         self.driver = None
 
-    def verify_login(self):
+    def discover_account(self):
         """
-        校验登录
-        :rtype: 登录结果字符串
+        账号发现
+        :return:
         """
         try:
             self.driver.get(self.location)
-            self.driver.find_element_by_name("username").send_keys(self.user)
+            time.sleep(3)
+            self.driver.find_element_by_name("user_name").send_keys(self.user)
             time.sleep(1)
             self.driver.find_element_by_name("password").send_keys(self.pwd)
             time.sleep(1)
-
             ## 修改验证码xpath
-            #img_element = self.driver.find_element_by_class_name("getCaptcha")
-            #if img_element is not None:
-                #img_txt = self.get_img_txt(img_element.screenshot_as_base64)
-                ## 填充验证码输入框
-                #self.driver.find_element_by_xpath("//input[@placeholder='请输入验证码']").send_keys(img_txt)
-                #time.sleep(1)
+            img_element = self.driver.find_element_by_id("myvld")
+            if img_element is not None:
+                img_txt = self.get_img_txt(img_element.screenshot_as_base64)
+                # 填充验证码输入框
+                self.driver.find_element_by_name("vldcode").send_keys(img_txt)
+                time.sleep(1)
 
-            self.driver.find_element_by_id("loginbtn").click()
-            time.sleep(1)
-            self.driver.switch_to.frame("topframe")
-            result = self.driver.find_element_by_id("loginuser").is_enabled()
-            if result:
-                print("result=" + "true")
-            else:
-                print("result=" + "false")
+            select = Select(self.driver.find_element_by_id("lang"))
+            select.select_by_visible_text("English")
+
+            self.driver.find_element_by_class_name("an").click()
+            time.sleep(3)
+            if self.driver.find_element_by_id("form_logout").is_enabled():
+                self.driver.switch_to.parent_frame()
+                self.driver.switch_to.frame('Frame_Content')
+                self.driver.switch_to.frame('menu')
+                self.driver.find_element_by_xpath("//a[contains(.,'Device')]").click()
+                time.sleep(1)
+                self.driver.find_element_by_xpath("//a[contains(.,'Users')]").click()
+                self.driver.switch_to.parent_frame()
+                self.driver.switch_to.frame('mainframe')
+                time.sleep(1)
+                discover_username_elements = self.driver.find_elements_by_xpath(
+                    "//div[@id='INNER']/table/tbody/tr[3]/td[2]/table/tbody/tr[2]/td/select/option")
+                # //*[@id="INNER"]/table/tbody/tr[3]/td[2]/table/tbody/tr[2]/td
+                # discover_username = []
+                for i in range(0, len(discover_username_elements)):
+                    print("username=" + discover_username_elements[i].text.split(" ")[0])
+                    # discover_username.append(discover_username_elements[i].text)
         except Exception:
             print(traceback.print_exc())
             print("result=" + "false")
@@ -71,13 +87,13 @@ class PamConnector:
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--no-sandbox')
-            self.driver = webdriver.Chrome('/Users/daniel/Downloads/chromedriver', options=options)
+            self.driver = webdriver.Chrome('D:\Python\Python39\chromedriver', options=options)
             self.driver.maximize_window()
         elif self.type == 'remote':
             options = Options()
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
-            options.add_argument('--no-sandbox')
+            # driver = webdriver.Chrome(options=options)
             driver = webdriver.Remote(command_executor=self.remote,
                                       desired_capabilities=DesiredCapabilities.CHROME, options=options)
             driver.maximize_window()
@@ -110,7 +126,7 @@ class PamConnector:
         if len(self.args) > 0:
             try:
                 argv = self.args[1:]
-                opts, args = getopt.getopt(argv, "u:p:t:l:s:")
+                opts, args = getopt.getopt(argv, "u:p:t:n:l:s:v:i:")
                 for opt, arg in opts:
                     if opt in ['-u']:
                         self.user = arg
@@ -118,13 +134,14 @@ class PamConnector:
                         self.pwd = arg
                     elif opt in ['-t']:
                         self.type = arg
+                    elif opt in ['-n']:
+                        self.new_pwd = arg
                     elif opt in ['-l']:
                         self.location = arg
                     elif opt in ['-s']:
                         self.remote = arg
-
                 self.get_driver()
-                self.verify_login()
+                self.discover_account()
             except Exception as e:
                 print(traceback.print_exc())
 

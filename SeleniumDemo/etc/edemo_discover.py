@@ -3,8 +3,8 @@
 # Author: Pete Yan <pete.yan@aliyun.com>
 # Date  : 2021/9/8
 #
-# 请修改PamConnector.verify_login
-# 完成设备校验代码
+# 请修改PamConnector.discover_account
+# 完成发现账号的代码
 import base64
 import getopt
 import hashlib
@@ -13,11 +13,12 @@ import sys
 import time
 import traceback
 
-import muggle_ocr
+#import muggle_ocr
 import requests
 from selenium import webdriver
 from selenium.webdriver import DesiredCapabilities
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 
 
 class PamConnector:
@@ -26,20 +27,21 @@ class PamConnector:
         self.user = None
         self.pwd = None
         self.type = None
+        self.new_pwd = None
         self.location = None
         self.remote = None
         self.driver = None
 
-    def verify_login(self):
+    def discover_account(self):
         """
-        校验登录
-        :rtype: 登录结果字符串
+        账号发现
+        :return:
         """
         try:
             self.driver.get(self.location)
-            self.driver.find_element_by_name("username").send_keys(self.user)
+            self.driver.find_element(By.ID, "username").send_keys(self.user)
             time.sleep(1)
-            self.driver.find_element_by_name("password").send_keys(self.pwd)
+            self.driver.find_element(By.ID, "password").send_keys(self.pwd)
             time.sleep(1)
 
             ## 修改验证码xpath
@@ -50,14 +52,36 @@ class PamConnector:
                 #self.driver.find_element_by_xpath("//input[@placeholder='请输入验证码']").send_keys(img_txt)
                 #time.sleep(1)
 
-            self.driver.find_element_by_id("loginbtn").click()
-            time.sleep(1)
-            self.driver.switch_to.frame("topframe")
-            result = self.driver.find_element_by_id("loginuser").is_enabled()
-            if result:
-                print("result=" + "true")
-            else:
-                print("result=" + "false")
+            self.driver.find_element(By.ID, "submit").click()
+            time.sleep(2)
+            #self.driver.switch_to.frame("topframe")
+            if self.driver.find_element(By.XPATH,"//*[@id='header']/div/div[4]/div/img").is_enabled():
+                self.driver.find_element(By.CSS_SELECTOR, ".agent-info").click()
+                time.sleep(1)
+                #self.vars["window_handles"] = self.driver.window_handles
+                self.driver.find_element(By.CSS_SELECTOR, ".agent-login-btn").click()
+                time.sleep(3)
+                #self.vars["win1325"] = self.wait_for_window(2000)
+                #self.vars["root"] = self.driver.current_window_handle
+                #self.driver.switch_to.window(self.vars["win1325"])
+                self.driver.find_element(By.LINK_TEXT, "坐席管理").click()
+                time.sleep(1)
+                self.driver.find_element(By.LINK_TEXT, "客服列表").click()
+                time.sleep(1)
+                #self.driver.switch_to.parent_frame()
+                #self.driver.switch_to.frame('menu')
+                #self.driver.find_element_by_xpath("//span[contains(.,'用户认证')]").click()
+                #time.sleep(2)
+                #self.driver.find_element_by_xpath("//span[contains(.,'账号管理')]").click()
+                #self.driver.switch_to.parent_frame()
+                #self.driver.switch_to.frame('content')
+                #time.sleep(1)
+                discover_username_elements = self.driver.find_elements_by_xpath(
+                    "//*[@class= 'table-striped']/tbody/tr/td[3]")
+                # discover_username = []
+                for i in range(1, len(discover_username_elements)):
+                    print("username=" + discover_username_elements[i].text)
+                    # discover_username.append(discover_username_elements[i].text)
         except Exception:
             print(traceback.print_exc())
             print("result=" + "false")
@@ -71,13 +95,13 @@ class PamConnector:
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--no-sandbox')
-            self.driver = webdriver.Chrome('/Users/daniel/Downloads/chromedriver', options=options)
+            self.driver = webdriver.Chrome('C:\Program Files\Google\Chrome\Application\95.0.4638.69\chromedriver.exe', options=options)
             self.driver.maximize_window()
         elif self.type == 'remote':
             options = Options()
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
-            options.add_argument('--no-sandbox')
+            # driver = webdriver.Chrome(options=options)
             driver = webdriver.Remote(command_executor=self.remote,
                                       desired_capabilities=DesiredCapabilities.CHROME, options=options)
             driver.maximize_window()
@@ -102,15 +126,16 @@ class PamConnector:
             if resp_data.get('success') is True:
                 img_text = resp_data.get('code')
         else:
-            sdk = muggle_ocr.SDK(model_type=muggle_ocr.ModelType.Captcha)
-            img_text = sdk.predict(image_bytes=base64.b64decode(base64img))
+            #sdk = muggle_ocr.SDK(model_type=muggle_ocr.ModelType.Captcha)
+            #img_text = sdk.predict(image_bytes=base64.b64decode(base64img))
+            img_text = ''
         return img_text
 
     def action(self):
         if len(self.args) > 0:
             try:
                 argv = self.args[1:]
-                opts, args = getopt.getopt(argv, "u:p:t:l:s:")
+                opts, args = getopt.getopt(argv, "u:p:t:n:l:s:v:i:")
                 for opt, arg in opts:
                     if opt in ['-u']:
                         self.user = arg
@@ -118,13 +143,14 @@ class PamConnector:
                         self.pwd = arg
                     elif opt in ['-t']:
                         self.type = arg
+                    elif opt in ['-n']:
+                        self.new_pwd = arg
                     elif opt in ['-l']:
                         self.location = arg
                     elif opt in ['-s']:
                         self.remote = arg
-
                 self.get_driver()
-                self.verify_login()
+                self.discover_account()
             except Exception as e:
                 print(traceback.print_exc())
 

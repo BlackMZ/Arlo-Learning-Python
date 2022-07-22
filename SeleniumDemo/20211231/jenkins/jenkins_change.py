@@ -5,14 +5,21 @@
 #
 # 请修改PamConnector.verify_modify_pwd
 # 完成变更设备登录密码代码
+import base64
 import getopt
-import signal
+import hashlib
+import json
 import sys
 import time
 import traceback
 
-from secmind.rpa import webdriver, Options
-from secmind.rpa import DesiredCapabilities
+# import muggle_ocr
+import requests
+from selenium import webdriver
+from selenium.webdriver import DesiredCapabilities
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 
 
 class PamConnector:
@@ -34,39 +41,35 @@ class PamConnector:
         :rtype: 密码修改结果
         """
         try:
-            print(self.via_pwd)
             print(self.via_user)
-            print(self.pwd)
+            print(self.user)
             self.driver.get(self.location)
-            self.driver.find_element_by_id("username").send_keys(self.user)
+            self.driver.find_element(By.ID, "j_username").send_keys(self.via_user)
             time.sleep(1)
-            self.driver.find_element_by_id("password").send_keys(self.pwd)
+            self.driver.find_element(By.NAME, "j_password").send_keys(self.via_pwd)
             time.sleep(1)
-            self.driver.find_element_by_id("loginbtn").click()
-            time.sleep(3)
-            self.driver.switch_to.frame("topframe")
-            if self.driver.find_element_by_id("loginuser").is_enabled():
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('menu')
-                self.driver.find_element_by_xpath("//span[contains(.,'系统维护')]").click()
-                time.sleep(2)
-                self.driver.find_element_by_xpath("//span[contains(.,'密码修改')]").click()
-                self.driver.switch_to.parent_frame()
-                self.driver.switch_to.frame('content')
+            self.driver.find_element(By.NAME, "Submit").click()
+            time.sleep(1)
+            if self.driver.find_element(By.CSS_SELECTOR, ".am-monitor-icon").is_enabled():
+                self.driver.find_element(By.LINK_TEXT, "Manage Jenkins").click()
                 time.sleep(1)
-                cur_pwd = self.driver.find_element_by_name('curpwd')
+                # //*[@id="main-panel"]/section[2]/div/div[4]/a
+                # self.driver.find_element(By.CSS_SELECTOR,
+                #                          ".manage-page__category:nth-child(5) .manage-option:nth-child(4) dt").click()
+                self.driver.find_element_by_xpath("//dt[contains(.,'Manage Users')]").click()
+                time.sleep(1)
+                self.driver.find_element_by_xpath("//a[contains(@href, 'user/" + self.user +"/configure')]").click()
+                time.sleep(1)
+                cur_pwd = self.driver.find_element_by_xpath("//input[@name='user.password']")
                 cur_pwd.clear()
-                cur_pwd.send_keys(self.pwd)
+                cur_pwd.send_keys(self.new_pwd)
                 time.sleep(1)
-                new_pwd1 = self.driver.find_element_by_name('newpwd1')
+                new_pwd1 = self.driver.find_element_by_xpath("//input[@name='user.password2']")
                 new_pwd1.clear()
                 new_pwd1.send_keys(self.new_pwd)
                 time.sleep(1)
-                new_pwd2 = self.driver.find_element_by_name('newpwd2')
-                new_pwd2.clear()
-                new_pwd2.send_keys(self.new_pwd)
-                self.driver.find_element_by_xpath("//input[@value='提交修改']").click()
-                self.driver.switch_to.alert.accept()
+                self.driver.find_element_by_xpath("//span[@name='Apply']").click()
+                time.sleep(1)
                 print("result=" + "true")
             else:
                 print("result=" + "false")
@@ -83,8 +86,9 @@ class PamConnector:
             options.add_argument('--allow-running-insecure-content')
             options.add_argument('--ignore-certificate-errors')
             options.add_argument('--no-sandbox')
-            # self.driver = webdriver.Chrome('./chromedriver', options=options)
-            self.driver = webdriver.Chrome('D:\Python\Python39\chromedriver', options=options)
+            self.driver = webdriver.Chrome('D:\Python\Python39\chromedriver',
+                                           options=options)
+            self.driver.maximize_window()
         elif self.type == 'remote':
             options = Options()
             options.add_argument('--allow-running-insecure-content')
@@ -96,11 +100,36 @@ class PamConnector:
             driver.maximize_window()
             self.driver = driver
 
+    def get_img_txt(self, base64img):
+        img_text = ''
+        status = requests.get(url='https://pam-openapi.secmind.cn/api/net/status')
+        if json.loads(status.text).get('success') is True:
+            sign_plain = "WwanDdou" + "" + base64img + "" + "vgdffs"
+            hl = hashlib.md5()
+            hl.update(sign_plain.encode(encoding='utf-8'))
+            sign_cipher = hl.hexdigest()
+            params = {
+                'sign': sign_cipher,
+                'typeId': '',
+                'image': base64img,
+                'assetType': ''
+            }
+            resp = requests.post(json=params, url='https://pam-openapi.secmind.cn/api/captcha/identity')
+            resp_data = json.loads(resp.text)
+            if resp_data.get('success') is True:
+                img_text = resp_data.get('code')
+        else:
+            # sdk = muggle_ocr.SDK(model_type=muggle_ocr.ModelType.Captcha)
+            # img_text = sdk.predict(image_bytes=base64.b64decode(base64img))
+            img_text = ''
+        return img_text
+
     def action(self):
         if len(self.args) > 0:
             try:
                 argv = self.args[1:]
                 opts, args = getopt.getopt(argv, "u:p:t:n:l:s:v:i:")
+
                 for opt, arg in opts:
                     if opt in ['-u']:
                         self.user = arg
@@ -122,6 +151,15 @@ class PamConnector:
                 self.verify_modify_pwd()
             except Exception as e:
                 print(traceback.print_exc())
+
+    def isElementExist(self, element):
+        flag = True
+        try:
+            self.driver.find_element(By.XPATH, element)
+            return flag
+        except:
+            flag = False
+            return flag
 
 
 def main():
